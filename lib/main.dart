@@ -4,13 +4,26 @@ import 'package:diplomski/screens/EditProfile.dart';
 import 'package:diplomski/screens/HomePage.dart';
 import 'package:diplomski/components/Stepper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:postgres/postgres.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:workmanager/workmanager.dart';
+
+import 'components/background_service.dart';
 
 Future<void> main() async {
+
   await dotenv.load(fileName: 'resource.env');
-  runApp(const MyApp());
+
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  String? userId = prefs.getString('userid');
+
+  if (userId != null && userId!='') {
+    runApp(const MaterialApp(home: HomePage()));
+  } else {
+    runApp(const MaterialApp(home: MyHomePage(title: 'Prijava')));
+  }
 }
 
 
@@ -45,46 +58,46 @@ class _MyHomePageState extends State<MyHomePage> {
   String _message = '';
   bool _isPasswordVisible = false;
 
-    Future<void> _handleLogin() async {
-      final String username = _usernameController.text.trim();
-      final String password = _passwordController.text.trim();
-      final connection = PostgreSQLConnection(
-        '${dotenv.env['DB_HOST']}',
-        int.parse('${dotenv.env['DB_PORT']}'),
-        '${dotenv.env['DB_DATABASE']}',
-        username: '${dotenv.env['DB_USER']}',
-        password: '${dotenv.env['DB_PASSWORD']}',
-      );
+  Future<void> _handleLogin() async {
+    final String username = _usernameController.text.trim();
+    final String password = _passwordController.text.trim();
+    final connection = PostgreSQLConnection(
+      '${dotenv.env['DB_HOST']}',
+      int.parse('${dotenv.env['DB_PORT']}'),
+      '${dotenv.env['DB_DATABASE']}',
+      username: '${dotenv.env['DB_USER']}',
+      password: '${dotenv.env['DB_PASSWORD']}',
+    );
 
-      await connection.open();
+    await connection.open();
 
-      final results = await connection.query('SELECT * FROM users WHERE username = @username AND password = @password', substitutionValues: {
-        'username': username,
-        'password': password,
+    final results = await connection.query('SELECT * FROM users WHERE username = @username AND password = @password', substitutionValues: {
+      'username': username,
+      'password': password,
+    });
+    if (results.isEmpty) {
+      setState(() {
+        _message = 'Neispravno korisničko ime ili lozinka';
       });
-      if (results.isEmpty) {
-        setState(() {
-          _message = 'Neispravno korisničko ime ili lozinka';
-        });
-      } else {
-        SharedPreferences prefs = await SharedPreferences.getInstance();
-        prefs.setString('userid', results.first.first.toString());
-        prefs.setString('firstname', results.first[1].toString());
-        prefs.setString('lastname', results.first[2].toString());
+    } else {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      prefs.setString('userid', results.first.first.toString());
+      prefs.setString('firstname', results.first[1].toString());
+      prefs.setString('lastname', results.first[2].toString());
 
-        print(results);
-        setState(() {
-          _message = '';
-        });
-        await connection.close();
+      print(results);
+      setState(() {
+        _message = '';
+      });
+      await connection.close();
 
-        Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const HomePage())
-        );
-      }
-
+      Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const HomePage())
+      );
     }
+
+  }
   void _handleRegistration() {
     Navigator.push(
       context,

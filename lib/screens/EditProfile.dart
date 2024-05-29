@@ -19,22 +19,29 @@ class _EditProfileState extends State<EditProfile> {
   int _selectedIndex = 1;
   List<Map<String, dynamic>> _tasks = [];
   List<Map<String, dynamic>> _allTasks = [];
+  int _bronzeLevel = 0;
+  int _silverLevel = 0;
+  int _goldLevel = 0;
+  int _platinumLevel = 0;
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
-      if(index==1) {
+      if (index == 1) {
         return;
       } else {
         Navigator.pop(context);
       }
     });
   }
+
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String _avatar = '';
   String _firstName = '';
   String _lastName = '';
   bool _isPasswordVisible = false;
+
   @override
   void initState() {
     super.initState();
@@ -70,120 +77,108 @@ class _EditProfileState extends State<EditProfile> {
         });
 
         await connection.close();
-if(response==1){
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text("Profile updated successfully"),
-              actions: [
-                ElevatedButton(
-                  child: const Text("OK"),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      }}
+        if (response == 1) {
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return AlertDialog(
+                title: const Text("Profile updated successfully"),
+                actions: [
+                  ElevatedButton(
+                    child: const Text("OK"),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
+              );
+            },
+          );
+        }
+      }
     } catch (error) {
       print('Error editing profile: $error');
     }
   }
+  Future<void> badgeControl() async {
+    final connection = PostgreSQLConnection(
+      '${dotenv.env['DB_HOST']}',
+      int.parse('${dotenv.env['DB_PORT']}'),
+      '${dotenv.env['DB_DATABASE']}',
+      username: '${dotenv.env['DB_USER']}',
+      password: '${dotenv.env['DB_PASSWORD']}',
+    );
 
-  bool isSameDate(DateTime date1, DateTime date2) {
-    return date1.year == date2.year && date1.month == date2.month && date1.day == date2.day;
+    await connection.open();
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? userId = prefs.getString('userid');
+    final taskResults = await connection.query('SELECT * FROM tasks');
+    List<Map<String, dynamic>> tasks = taskResults.map((row) {
+      return {
+        'id': row[0],
+        'startTime': row[3],
+        'endTime': row[4],
+        'activity': row[1],
+        'date': row[2],
+        'location': row[5],
+        'priority': row[6],
+        'progress': row[7],
+        'status': row[8],
+        'userId': row[9],
+        'parentId': row[10]
+      };
+    }).where((task) => (userId!.trim()) == (task['userId']).toString()).toList();
+
+    setState(() {
+      _tasks = tasks.where((substep) =>   substep['status'] == 2).toList();
+print(_tasks.length);
+      int completedTasks = _tasks.length;
+      _bronzeLevel = (completedTasks ~/ 5).clamp(0, 6);
+      _silverLevel = ((completedTasks - 30) ~/ 5).clamp(0, 6);
+      _goldLevel = ((completedTasks - 60) ~/ 5).clamp(0, 6);
+      _platinumLevel = ((completedTasks - 90) ~/ 5).clamp(0, 6);
+    });
+
+    await connection.close();
   }
-
-Future<void> badgeControl() async {
-  final connection = PostgreSQLConnection(
-    '${dotenv.env['DB_HOST']}',
-    int.parse('${dotenv.env['DB_PORT']}'),
-    '${dotenv.env['DB_DATABASE']}',
-    username: '${dotenv.env['DB_USER']}',
-    password: '${dotenv.env['DB_PASSWORD']}',
-  );
-
-  await connection.open();
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  String? userId = prefs.getString('userid');
-  final taskResults = await connection.query('SELECT * FROM tasks');
-  List<Map<String, dynamic>> tasks = taskResults.map((row) {
-    return {
-      'id': row[0],
-      'startTime': row[3],
-      'endTime': row[4],
-      'activity': row[1],
-      'date': row[2],
-      'location': row[5],
-      'priority': row[6],
-      'progress': row[7],
-      'status': row[8],
-      'userId': row[9],
-      'parentId':row[10]
-    };
-  }).where((task)=>
-  isSameDate( DateTime.now(), task['date']) && (userId!.trim()) == (task['userId']).toString()).toList();
-  final substepResults = await connection.query('SELECT * FROM substeps');
-  List<Map<String, dynamic>> substeps = substepResults.map((row) {
-    return {
-      'id': row[0],
-      'status': row[4],
-      'taskId': row[3],
-    };
-  }).toList();
-
-  setState(() {
-    _allTasks=substeps.where((substep)=>
-        tasks.any((task) => task['id'] == substep['taskId'])).toList();
-
-    _tasks =  substeps.where((substep) =>
-    tasks.any((task)=>task['id'] == substep['taskId']) && substep['status']==1
-    ).toList();
-    print(_tasks);
-  });
-  await connection.close();
-}
 
   Future<void> fetchUserDetails() async {
     try {
       badgeControl();
-      print("uslo");
       SharedPreferences prefs = await SharedPreferences.getInstance();
       String? userId = prefs.getString('userid');
       if (userId != null) {
-          final connection = PostgreSQLConnection(
-            '${dotenv.env['DB_HOST']}',
-            int.parse('${dotenv.env['DB_PORT']}'),
-            '${dotenv.env['DB_DATABASE']}',
-            username: '${dotenv.env['DB_USER']}',
-            password: '${dotenv.env['DB_PASSWORD']}',
-          );
+        final connection = PostgreSQLConnection(
+          '${dotenv.env['DB_HOST']}',
+          int.parse('${dotenv.env['DB_PORT']}'),
+          '${dotenv.env['DB_DATABASE']}',
+          username: '${dotenv.env['DB_USER']}',
+          password: '${dotenv.env['DB_PASSWORD']}',
+        );
 
-          await connection.open();
+        await connection.open();
 
-          final results = await connection.query('SELECT * FROM users WHERE id = @id', substitutionValues: {
-            'id': userId,
+        final results = await connection.query('SELECT * FROM users WHERE id = @id', substitutionValues: {
+          'id': userId,
+        });
+
+        await connection.close();
+
+        if (results.isNotEmpty) {
+          setState(() {
+            _avatar = results.first[5];
+            _firstName = results.first[1];
+            _lastName = results.first[2];
+            _usernameController.text = results.first[3];
+            _passwordController.text = results.first[4];
           });
-
-          await connection.close();
-
-          if (results.isNotEmpty) {
-            setState(() {
-                  _avatar = results.first[5];
-                 _firstName = results.first[1];
-               _lastName = results.first[2];
-              _usernameController.text = results.first[3];
-              _passwordController.text =  results.first[4];
-            });
-     }
+        }
       }
     } catch (error) {
       print('Error fetching details: $error');
     }
   }
+
   Future<void> handleSwitch() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     prefs.setString('userid', '');
@@ -192,9 +187,9 @@ Future<void> badgeControl() async {
       MaterialPageRoute(builder: (context) => const MyApp()),
     );
   }
-  double calculateProgress() {
-    int totalGoals =  _allTasks.length;
 
+  double calculateProgress() {
+    int totalGoals = _allTasks.length;
     int completedTasks = _tasks.length;
 
     if (totalGoals == 0) {
@@ -207,14 +202,32 @@ Future<void> badgeControl() async {
   }
 
 
+
+  List<Widget> generateBadgeRow(String badgeType, int level) {
+    List<Widget> badges = [];
+    for (int i = 1; i <= level; i++) {
+      badges.add(
+        Image.asset(
+          'assets/$badgeType$i.png',
+          width: 50,
+          height: 50,
+        ),
+      );
+    }
+    return badges;
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Uredi profil' ,
+        title: const Text(
+          'Uredi profil',
           style: TextStyle(
-          fontWeight: FontWeight.bold,
-        ),),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         backgroundColor: const Color(0xFFCCEEFF),
         automaticallyImplyLeading: false,
       ),
@@ -264,71 +277,66 @@ Future<void> badgeControl() async {
                 obscureText: !_isPasswordVisible,
               ),
               SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: handleChanges,
-                child: Text('Sačuvaj promjene'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFFCCEEFF),
-                ),
-              ),
+        ElevatedButton(
+          onPressed: handleChanges,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Color(0xFFCCEEFF),
+          ),
+          child: const Text('Sačuvaj promjene')),
+
               SizedBox(height: 20),
               const Text(
-                'Napredak',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 10),
-              LinearProgressIndicator(
-                value: calculateProgress(),
-                minHeight: 10,
-                backgroundColor: Colors.grey[300],
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF99CCFF)),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Ciljevi: ${_tasks.length}/${_allTasks.length}',
-                style: TextStyle(fontSize: 16),
-              ),
-              Row(
+                'Vaše medalje:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),),
+              SizedBox(height: 20),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  if (_tasks.length / _allTasks.length * 100 >= 20)
-                    Image.asset(
-                      'assets/bronze.png',
-                      width: 70,
-                      height: 70,
+
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: generateBadgeRow('bronze', _bronzeLevel),
+                  ),
+                  SizedBox(height: 20),
+                  Wrap(
+                    spacing: 10,
+                    alignment: WrapAlignment.center,
+                    runSpacing: 10,
+                    children: generateBadgeRow('silver', _silverLevel),
+                  ),
+                  SizedBox(height: 20),
+                  Wrap(
+                    spacing: 10,
+                    alignment: WrapAlignment.center,
+                    runSpacing: 10,
+                    children: generateBadgeRow('gold', _goldLevel),
+                  ),
+                  SizedBox(height: 20),
+                  Wrap(
+                    spacing: 10,
+                    alignment: WrapAlignment.center,
+                    runSpacing: 10,
+                    children: generateBadgeRow('platinum', _platinumLevel),
+                  ),
+                  if(_bronzeLevel==0)
+                    Text(
+                      'Nemate medalja',
+                      style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
                     ),
-                  SizedBox(width: 20),
-                  if (_tasks.length / _allTasks.length * 100 >= 40)
-                    Image.asset(
-                      'assets/silver.png',
-                      width: 70,
-                      height: 70,
-                    ),
-                  SizedBox(width: 20),
-                  if (_tasks.length / _allTasks.length * 100 >= 60)
-                    Image.asset(
-                      'assets/gold.png',
-                      width: 70,
-                      height: 70,
-                    ),
-                  SizedBox(width: 20),
-                  if (_tasks.length / _allTasks.length * 100 >= 80)
-                    Image.asset(
-                      'assets/platinum.png',
-                      width: 70,
-                      height: 70,
-                    ),
+                  SizedBox(height: 20),
+                  TextButton(
+                    onPressed: handleSwitch,
+                    child: Text('Prijavi se s drugog računa'),
+                  ),
                 ],
-              ),
-              SizedBox(height: 20),
-              Divider(),
-              SizedBox(height: 20),
-              TextButton(
-                onPressed: handleSwitch,
-                child: Text('Prijavi se s drugog računa'),
               ),
             ],
           ),
-
         ),
       ),
       bottomNavigationBar: CustomBottomNavigationBar(
