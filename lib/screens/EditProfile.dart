@@ -1,7 +1,5 @@
 import 'package:diplomski/main.dart';
-import 'package:diplomski/screens/HomePage.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:postgres/postgres.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -324,7 +322,7 @@ print(_tasks.length);
                     children: generateBadgeRow('platinum', _platinumLevel),
                   ),
                   if(_bronzeLevel==0)
-                    Text(
+                    const Text(
                       'Nemate medalja',
                       style: TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic),
                     ),

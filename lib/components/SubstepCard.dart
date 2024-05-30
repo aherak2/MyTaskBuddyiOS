@@ -116,7 +116,6 @@ class _SubsetCardState extends State<SubsetCard> {
     );
     await connection.open();
 
-    // Update the status of the current substep
     await connection.execute('''
       UPDATE substeps 
       SET status = 1

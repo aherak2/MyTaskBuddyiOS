@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:postgres/postgres.dart';
 import '../screens/Task.dart';
-class TaskCard extends StatelessWidget {
+
+class TaskCard extends StatefulWidget {
   final String startTime;
   final String endTime;
   final String activity;
@@ -34,20 +37,84 @@ class TaskCard extends StatelessWidget {
     required this.refreshTasks,
   });
 
+  @override
+  _TaskCardState createState() => _TaskCardState();
+}
+
+class _TaskCardState extends State<TaskCard> {
+  bool isDa = true;
+
+
+  @override
+  void initState() {
+    super.initState();
+    fetchInitialHelpValue();
+  }
+
+  Future<void> fetchInitialHelpValue() async {
+    final connection = PostgreSQLConnection(
+      '${dotenv.env['DB_HOST']}',
+      int.parse('${dotenv.env['DB_PORT']}'),
+      '${dotenv.env['DB_DATABASE']}',
+      username: '${dotenv.env['DB_USER']}',
+      password: '${dotenv.env['DB_PASSWORD']}',
+    );
+
+    await connection.open();
+
+    final results = await connection.query(
+      'SELECT help FROM tasks WHERE id = @taskId',
+      substitutionValues: {'taskId': widget.taskId},
+    );
+
+    if (results.isNotEmpty) {
+      setState(() {
+        isDa = results[0][0] == 0;
+      });
+    }
+    await  connection.close();
+  }
+
+
   String formatTime(String time) {
     final List<String> parts = time.split(':');
     return '${parts[0]}:${parts[1]}';
   }
 
+  Future<void> toggleButton() async {
+    setState(() {
+      isDa = !isDa;
+    });
+    final connection = PostgreSQLConnection(
+      '${dotenv.env['DB_HOST']}',
+      int.parse('${dotenv.env['DB_PORT']}'),
+      '${dotenv.env['DB_DATABASE']}',
+      username: '${dotenv.env['DB_USER']}',
+      password: '${dotenv.env['DB_PASSWORD']}',
+    );
+
+    await connection.open();
+
+    await connection.execute('''
+    UPDATE tasks 
+    SET help = @help
+    WHERE id = @taskId
+  ''', substitutionValues: {
+      'help': isDa ? 0 : 1,
+      'taskId': widget.taskId,
+    });
+
+    await connection.close();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final formattedStartTime = formatTime(startTime);
-    final formattedEndTime = formatTime(endTime);
+    final formattedStartTime = formatTime(widget.startTime);
+    final formattedEndTime = formatTime(widget.endTime);
 
     return Container(
       margin: EdgeInsets.all(8),
       padding: EdgeInsets.all(16),
-
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -70,17 +137,17 @@ class TaskCard extends StatelessWidget {
             MaterialPageRoute(
               builder: (context) => Task(
                 route: {
-                  'taskId': taskId,
-                  'activityName': activityName,
-                  'date': date,
-                  'startTime': startTime,
-                  'endTime': endTime,
-                  'location': location,
-                  'parentId': parentId,
-                  'firstName': firstName,
-                  'status': status,
+                  'taskId': widget.taskId,
+                  'activityName': widget.activityName,
+                  'date': widget.date,
+                  'startTime': widget.startTime,
+                  'endTime': widget.endTime,
+                  'location': widget.location,
+                  'parentId': widget.parentId,
+                  'firstName': widget.firstName,
+                  'status': widget.status,
                 },
-                refreshTasks: refreshTasks,
+                refreshTasks: widget.refreshTasks,
               ),
             ),
           );
@@ -93,34 +160,33 @@ class TaskCard extends StatelessWidget {
               MaterialPageRoute(
                 builder: (context) => Task(
                   route: {
-                    'taskId': taskId,
-                    'activityName': activityName,
-                    'date': date,
-                    'startTime': startTime,
-                    'endTime': endTime,
-                    'location': location,
-                    'parentId': parentId,
-                    'firstName': firstName,
-                    'status': status,
+                    'taskId': widget.taskId,
+                    'activityName': widget.activityName,
+                    'date': widget.date,
+                    'startTime': widget.startTime,
+                    'endTime': widget.endTime,
+                    'location': widget.location,
+                    'parentId': widget.parentId,
+                    'firstName': widget.firstName,
+                    'status': widget.status,
                   },
-                  refreshTasks: refreshTasks,
+                  refreshTasks: widget.refreshTasks,
                 ),
               ),
             );
           },
         ),
-
         title: Container(
           child: Row(
             children: [
               Text(
-                activity,
+                widget.activity,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 20,
                 ),
               ),
-              if (priority == 1)
+              if (widget.priority == 1)
                 Expanded(
                   child: Align(
                     alignment: Alignment.centerRight,
@@ -144,14 +210,10 @@ class TaskCard extends StatelessWidget {
             ],
           ),
         ),
-
         subtitle: Column(
-
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(height: 15),
-
-
             Row(
               mainAxisAlignment: MainAxisAlignment.start,
               children: [
@@ -159,26 +221,42 @@ class TaskCard extends StatelessWidget {
                 SizedBox(width: 8),
                 Text('$formattedStartTime - $formattedEndTime'),
                 Expanded(
-
                   child: Text(
-                    location,
+                    widget.location,
                     textAlign: TextAlign.right,
                   ),
                 ),
                 SizedBox(width: 8),
-                Image.asset('assets/placeholder.png', width: 20.0, height: 20.0, alignment: Alignment.centerRight),
-
+                Image.asset('assets/placeholder.png',
+                    width: 20.0, height: 20.0, alignment: Alignment.centerRight),
               ],
             ),
-
-
             SizedBox(height: 15),
             LinearProgressIndicator(
-              value: progress / 100,
+              value: widget.progress / 100,
               backgroundColor: Colors.grey[300],
               valueColor: AlwaysStoppedAnimation<Color>(
-                progress == 100 ? Colors.lightGreen : Colors.blue,
+                widget.progress == 100 ? Colors.lightGreen : Colors.blue,
               ),
+            ),
+            SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Da li vam je potrebna pomoć sa ovim zadatkom?'),
+                ),
+                ElevatedButton(
+                  onPressed: toggleButton,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent.shade200,
+                  ),
+                  child: Text(isDa ? 'DA' : 'NE',style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    fontSize: 14,
+                  ),),
+                ),
+              ],
             ),
           ],
         ),
