@@ -45,10 +45,37 @@ class _RegistrationState extends State<registration> {
   }
 
 
-  void _handleSubmit() async {
+  Future<void> _handleSubmit() async {
     final firstName = _firstNameController.text;
     final lastName = _lastNameController.text;
     final selectedAvatarUrl = avatars[0]['url'];
+
+    if (firstName.isEmpty || lastName.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Greška'),
+            content: SingleChildScrollView(
+              child: ListBody(
+                children: <Widget>[
+                  Text('Morate unijeti ime i prezime.'),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: Text('OK'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
 
     final connection = PostgreSQLConnection(
       '${dotenv.env['DB_HOST']}',
@@ -62,17 +89,49 @@ class _RegistrationState extends State<registration> {
       await connection.open();
 
       final results = await connection.query('''
-      INSERT INTO users (firstname, lastname, avatar)
-      VALUES (@firstName, @lastName, @selectedAvatarUrl)
-      RETURNING id
+      SELECT * FROM users WHERE firstname = @firstName
     ''', substitutionValues: {
         'firstName': firstName,
-        'lastName': lastName,
-        'selectedAvatarUrl': selectedAvatarUrl,
       });
 
       if (results.isNotEmpty) {
-        final userId = results.first.first as int;
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Greška'),
+              content: SingleChildScrollView(
+                child: ListBody(
+                  children: <Widget>[
+                    Text('Korisnik već postoji sa unesenim imenom.'),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: Text('OK'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      } else {
+        final results1 = await connection.query('''
+        INSERT INTO users (firstname, lastname, avatar)
+        VALUES (@firstName, @lastName, @selectedAvatarUrl)
+        RETURNING id
+      ''', substitutionValues: {
+          'firstName': firstName,
+          'lastName': lastName,
+          'selectedAvatarUrl': selectedAvatarUrl,
+        });
+
+        if (results1.isNotEmpty) {
+          final userId = results1.first.first as int;
+        }
       }
 
       await connection.close();
@@ -82,6 +141,7 @@ class _RegistrationState extends State<registration> {
       });
     }
   }
+
 
     @override
     Widget build(BuildContext context) {

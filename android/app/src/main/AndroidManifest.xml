@@ -30,6 +30,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- Flutter local notifications receivers and services -->
         <receiver android:name="com.dexterous.flutterlocalnotifications.receivers.ActionReceiver" android:exported="true"/>
         <receiver android:name="com.dexterous.flutterlocalnotifications.receivers.DismissedReceiver" android:exported="true"/>
         <receiver android:name="com.dexterous.flutterlocalnotifications.receivers.ScheduledNotificationReceiver" android:exported="true"/>
@@ -41,6 +42,8 @@
         </receiver>
         <service android:name="com.dexterous.flutterlocalnotifications.services.NotificationService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true"/>
         <service android:name="com.dexterous.flutterlocalnotifications.services.NotificationActionButtonReceiver" android:exported="true"/>
+
+        <!-- Workmanager service and receiver -->
         <service
             android:name="be.tramckrijte.workmanager.WorkManagerPlugin"
             android:permission="android.permission.BIND_JOB_SERVICE"
@@ -57,6 +60,11 @@
         </receiver>
     </application>
 
+    <!-- Permissions for notifications and Workmanager -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
 </manifest>

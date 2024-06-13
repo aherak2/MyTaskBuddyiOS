@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:postgres/postgres.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/Task.dart';
+import 'package:add_2_calendar/add_2_calendar.dart' as calendar;
 
 class TaskCard extends StatefulWidget {
   final String startTime;
@@ -43,12 +45,43 @@ class TaskCard extends StatefulWidget {
 
 class _TaskCardState extends State<TaskCard> {
   bool isDa = true;
+  bool isAddedToCalendar = false;
+  Future<void> addTaskToCalendar(String title, DateTime startTime, DateTime endTime, String location) async {
+    final event = calendar.Event(
+      title: title,
+      location: location,
+      startDate: startTime,
+      endDate: endTime,
+      iosParams: const calendar.IOSParams(
+        reminder: Duration(minutes: 15),
+      ),
+    );
 
+
+
+    calendar.Add2Calendar.addEvent2Cal(event);
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isAddedToCalendar${widget.taskId}', true);
+
+    setState(() {
+      isAddedToCalendar = true;
+    });
+
+  }
 
   @override
   void initState() {
     super.initState();
     fetchInitialHelpValue();
+    checkCalendarEventStatus();
+  }
+
+  Future<void> checkCalendarEventStatus() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    bool isAdded = prefs.getBool('isAddedToCalendar${widget.taskId}') ?? false;
+    setState(() {
+      isAddedToCalendar = isAdded;
+    });
   }
 
   Future<void> fetchInitialHelpValue() async {
@@ -72,9 +105,8 @@ class _TaskCardState extends State<TaskCard> {
         isDa = results[0][0] == 0;
       });
     }
-    await  connection.close();
+    await connection.close();
   }
-
 
   String formatTime(String time) {
     final List<String> parts = time.split(':');
@@ -85,6 +117,7 @@ class _TaskCardState extends State<TaskCard> {
     setState(() {
       isDa = !isDa;
     });
+
     final connection = PostgreSQLConnection(
       '${dotenv.env['DB_HOST']}',
       int.parse('${dotenv.env['DB_PORT']}'),
@@ -176,39 +209,40 @@ class _TaskCardState extends State<TaskCard> {
             );
           },
         ),
-        title: Container(
-          child: Row(
-            children: [
-              Text(
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
                 widget.activity,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 20,
                 ),
               ),
-              if (widget.priority == 1)
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Container(
-                      padding: EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: Color(0xFFFFCCCC),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: const Text(
-                        'HITNO',
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+            ),
+            if (widget.priority == 1)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(width: 8),
+                  Container(
+                    padding: EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: Color(0xFFFFCCCC),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: const Text(
+                      'HITNO',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
                       ),
                     ),
                   ),
-                ),
-            ],
-          ),
+                ],
+              ),
+          ],
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -220,15 +254,13 @@ class _TaskCardState extends State<TaskCard> {
                 Image.asset('assets/clock.png', width: 20.0, height: 20.0),
                 SizedBox(width: 8),
                 Text('$formattedStartTime - $formattedEndTime'),
-                Expanded(
-                  child: Text(
-                    widget.location,
-                    textAlign: TextAlign.right,
-                  ),
+                Spacer(),
+                Text(
+                  widget.location,
+                  textAlign: TextAlign.right,
                 ),
                 SizedBox(width: 8),
-                Image.asset('assets/placeholder.png',
-                    width: 20.0, height: 20.0, alignment: Alignment.centerRight),
+                Image.asset('assets/placeholder.png', width: 20.0, height: 20.0),
               ],
             ),
             SizedBox(height: 15),
@@ -243,20 +275,50 @@ class _TaskCardState extends State<TaskCard> {
             Row(
               children: [
                 Expanded(
-                  child: Text('Da li vam je potrebna pomoć sa ovim zadatkom?'),
+                  child: Text('Potrebna pomoć?'),
                 ),
                 ElevatedButton(
                   onPressed: toggleButton,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent.shade200,
+                    backgroundColor: isDa? Colors.blueAccent.shade200:Colors.blueAccent.shade100,
                   ),
-                  child: Text(isDa ? 'DA' : 'NE',style: const TextStyle(
+                  child: Text(
+                    isDa ? 'NE' : 'DA',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isAddedToCalendar ? Colors.blue.shade300 : Colors.blue.shade400,
+                ),
+                onPressed:
+                     () {
+                  if(!isAddedToCalendar) {
+                    addTaskToCalendar(
+                    widget.activityName,
+                    widget.date.add(Duration(hours: int.parse(widget.startTime.split(":")[0]), minutes: int.parse(widget.startTime.split(":")[1]))),
+                    widget.date.add(Duration(hours: int.parse(widget.endTime.split(":")[0]), minutes: int.parse(widget.endTime.split(":")[1]))),
+                    'Location: ${widget.location}',
+                  );
+                  }
+                },
+                child:  Text(
+                  !isAddedToCalendar ? 'Dodajte u kalendar' : 'Dodano u kalendar',
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                     fontSize: 14,
-                  ),),
+                  ),
                 ),
-              ],
+              ),
             ),
           ],
         ),

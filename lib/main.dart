@@ -1,29 +1,184 @@
+import 'dart:async';
 import 'dart:io';
-
-import 'package:diplomski/screens/EditProfile.dart';
+import 'package:add_2_calendar/add_2_calendar.dart' as calendar;
 import 'package:diplomski/screens/HomePage.dart';
 import 'package:diplomski/components/Stepper.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:postgres/postgres.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:workmanager/workmanager.dart';
-
+import 'package:supabase/supabase.dart';
 import 'components/background_service.dart';
-
+@pragma(
+    'vm:entry-point')
 Future<void> main() async {
 
   await dotenv.load(fileName: 'resource.env');
+  final connection = PostgreSQLConnection(
+    '${dotenv.env['DB_HOST']}',
+    int.parse('${dotenv.env['DB_PORT']}'),
+    '${dotenv.env['DB_DATABASE']}',
+    username: '${dotenv.env['DB_USER']}',
+    password: '${dotenv.env['DB_PASSWORD']}',
+  );
+
 
   SharedPreferences prefs = await SharedPreferences.getInstance();
   String? userId = prefs.getString('userid');
+  WidgetsFlutterBinding.ensureInitialized();
+  NotifyService().initNotification();
+  await connection.open();
+  await listenForNotifications();
 
+  await connection.close();
   if (userId != null && userId!='') {
     runApp(const MaterialApp(home: HomePage()));
   } else {
     runApp(const MaterialApp(home: MyHomePage(title: 'Prijava')));
   }
+}
+ SupabaseClient _client=SupabaseClient('${dotenv.env['SUPABASE_URL']}', '${dotenv.env['SUPABASE_ANON_KEY']}');
+
+void initializeService() async {
+  final service = FlutterBackgroundService();
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: true,
+      isForegroundMode: true,
+
+      notificationChannelId: 'my_foreground',
+      initialNotificationTitle: 'AWESOME SERVICE',
+      initialNotificationContent: 'Initializing',
+      foregroundServiceNotificationId: 888,
+    ),
+
+    iosConfiguration: IosConfiguration(
+      autoStart: true,
+      onForeground: onStart,
+      onBackground: onBackground,
+    ),
+  );
+  Timer.periodic(const Duration(seconds: 5), (timer) async {
+    SharedPreferences prefs2 = await SharedPreferences.getInstance();
+    final userId = prefs2.getString('userid');
+    if (userId != null && userId != '') {
+      await listenForNotifications();
+    }
+  });
+}
+FutureOr<bool> onBackground(ServiceInstance service) async {
+  await listenForNotifications();
+  return true;
+}
+
+
+Future<void> onStart(ServiceInstance service) async {
+listenForNotifications();
+}
+
+
+Future<void> createTrigger(PostgreSQLConnection connection) async {
+  try {
+    await connection.query('''
+      CREATE TRIGGER my_trigger
+      AFTER INSERT ON tasks
+      FOR EACH ROW
+      EXECUTE PROCEDURE my_function();
+    ''');
+    print('Trigger created successfully.');
+  } catch (e) {
+    print('Error creating trigger: $e');
+  }
+}
+
+Future<void> createFunction(PostgreSQLConnection connection) async {
+  try {
+    await connection.query('''
+      CREATE OR REPLACE FUNCTION my_function() RETURNS TRIGGER AS \$\$ 
+      BEGIN
+        PERFORM pg_notify('new_task_added', '');
+        RETURN NEW;
+      END;
+      \$\$  LANGUAGE plpgsql;
+''');
+    print('Function created successfully.');
+  } catch (e) {
+    print('Error creating function: $e');
+  }
+}
+
+void addTaskToCalendar(String title, DateTime startTime, DateTime endTime, String location) {
+  final event = calendar.Event(
+    title: title,
+    location: location,
+    startDate: startTime,
+    endDate: endTime,
+    iosParams: const calendar.IOSParams(
+      reminder: Duration(minutes: 15),
+    ),
+  );
+
+
+
+  calendar.Add2Calendar.addEvent2Cal(event);
+}
+
+
+Future<void> listenForNotifications() async {
+  await dotenv.load(fileName: 'resource.env');
+  final connection = PostgreSQLConnection(
+    dotenv.env['DB_HOST']!,
+    int.parse(dotenv.env['DB_PORT']!),
+    dotenv.env['DB_DATABASE']!,
+    username: dotenv.env['DB_USER']!,
+    password: dotenv.env['DB_PASSWORD']!,
+  );
+
+  await connection.open();
+  await connection.query("LISTEN new_task_added");
+
+  connection.notifications.listen((event) async {
+    if (event.channel == 'new_task_added') {
+      final taskInfo = await getTaskInfo(connection, event.payload);
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String? userId = prefs.getString('userid');
+
+      if (taskInfo != null && isToday(taskInfo['date'] )&& taskInfo['userId'].toString()==userId) {
+        NotifyService().showNotification(
+          title: 'MyTaskBuddy',
+          body: 'Dodan je novi zadatak!',
+        );
+      }
+    }
+  });
+}
+
+Future<Map<String, dynamic>?> getTaskInfo(PostgreSQLConnection connection, String? taskId) async {
+  final results = await connection.query('SELECT * FROM tasks WHERE id = @taskId', substitutionValues: {'taskId': taskId});
+  if (results.isNotEmpty) {
+    final row = results.first;
+    return {
+      'id': row[0],
+      'startTime': row[3],
+      'endTime': row[4],
+      'activity': row[1],
+      'date': row[2],
+      'location': row[5],
+      'priority': row[6],
+      'progress': row[7],
+      'status': row[8],
+      'userId': row[9],
+      'parentId': row[10]
+    };
+  }
+  return null;
+}
+
+bool isToday(DateTime date) {
+  final now = DateTime.now();
+  return date.year == now.year && date.month == now.month && date.day == now.day;
 }
 
 
@@ -85,7 +240,6 @@ class _MyHomePageState extends State<MyHomePage> {
       prefs.setString('firstname', results.first[1].toString());
       prefs.setString('lastname', results.first[2].toString());
 
-      print(results);
       setState(() {
         _message = '';
       });
@@ -238,20 +392,15 @@ class BluePainter extends CustomPainter {
     canvas.drawPath(mainBackground, paint);
 
     Path ovalPath = Path();
-    // Start paint from 20% height to the left
     ovalPath.moveTo(0, height * 0.3);
 
-    // paint a curve from current position to middle of the screen
     ovalPath.quadraticBezierTo(
         width*1.7, height*0.25 , width, height *1.25);
 
-    // Paint a curve from current position to bottom left of screen at width * 0.1
     ovalPath.quadraticBezierTo(width * 1.5, height * 1, width * 0.7, height);
 
-    // draw remaining line to bottom left side
     ovalPath.lineTo(0, height);
 
-    // Close line to reset it back
     ovalPath.close();
 
     paint.color = Colors.white;
